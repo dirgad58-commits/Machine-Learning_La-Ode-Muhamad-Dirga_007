@@ -1,24 +1,21 @@
 # ============================================
-# FIX: Untuk Python 3.14 compatibility
+# FIX: Untuk Python 3.14 - Setuptools compatibility
 # ============================================
 import sys
+import subprocess
 import warnings
 warnings.filterwarnings('ignore')
 
-# Fix untuk distutils issue
+# Pastikan setuptools terinstall
 try:
     import setuptools
+    import pkg_resources
 except ImportError:
-    import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "setuptools"])
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "setuptools", "wheel"])
+    import setuptools
+    import pkg_resources
 
-# Fix untuk numpy/pandas compatibility
-import os
-os.environ['PYTHONWARNINGS'] = 'ignore'
-
-# ============================================
-# KONFIGURASI HALAMAN
-# ============================================
+# Import lainnya
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -26,9 +23,14 @@ import joblib
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
+import os
 import sys
-import warnings
-warnings.filterwarnings('ignore')
+
+# Tambahkan path untuk import modul utils
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from utils.model_downloader import ModelDownloader, check_and_download_models
+from utils.config import APP_CONFIG, MODEL_INFO
 
 # ... (rest of your code) ...
 
