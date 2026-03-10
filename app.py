@@ -1,21 +1,3 @@
-# ============================================
-# FIX: Untuk Python 3.14 - Setuptools compatibility
-# ============================================
-import sys
-import subprocess
-import warnings
-warnings.filterwarnings('ignore')
-
-# Pastikan setuptools terinstall
-try:
-    import setuptools
-    import pkg_resources
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "setuptools", "wheel"])
-    import setuptools
-    import pkg_resources
-
-# Import lainnya
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -25,14 +7,9 @@ import plotly.express as px
 from datetime import datetime
 import os
 import sys
-
-# Tambahkan path untuk import modul utils
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from utils.model_downloader import ModelDownloader, check_and_download_models
-from utils.config import APP_CONFIG, MODEL_INFO
-
-# ... (rest of your code) ...
+import gc
+import psutil
+import time
 
 # Tambahkan path untuk import modul utils
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -51,55 +28,76 @@ st.set_page_config(
 )
 
 # ============================================
-# FUNGSI LOAD MODELS (DENGAN AUTO-DOWNLOAD)
+# FUNGSI MEMORY MONITORING
 # ============================================
-@st.cache_resource(ttl=3600)  # Cache selama 1 jam
+def log_memory(stage=""):
+    """Monitor memory usage"""
+    try:
+        process = psutil.Process(os.getpid())
+        mem = process.memory_info().rss / 1024 / 1024
+        st.sidebar.caption(f"💾 RAM {stage}: {mem:.1f} MB")
+        return mem
+    except:
+        return 0
+
+def force_gc():
+    """Force garbage collection"""
+    gc.collect()
+    time.sleep(0.5)
+
+# ============================================
+# LOAD MODELS - SATU PER SATU
+# ============================================
+@st.cache_resource(ttl=3600)
 def load_models():
-    """Load semua model dan encoders dengan auto-download jika perlu"""
+    """Load models satu per satu untuk menghemat memory"""
     
-    # Cek dan download models jika diperlukan
+    # Log memory awal
+    log_memory("start")
+    
+    # Download models jika perlu
     if not check_and_download_models():
-        st.error("❌ Gagal mendownload model. Silakan coba lagi nanti.")
+        st.error("❌ Failed to download models")
         st.stop()
     
-    # Load models jika semua file sudah ada
-    try:
-        with st.spinner("🔄 Loading models..."):
-            
-            # Load scaler
-            scaler = joblib.load('models/scaler.pkl')
-            
-            # Load label encoders
-            le_cut = joblib.load('models/le_cut.pkl')
-            le_color = joblib.load('models/le_color.pkl')
-            le_clarity = joblib.load('models/le_clarity.pkl')
-            
-            # Load models
-            knn_model = joblib.load('models/knn_model_best.pkl')
-            rf_model = joblib.load('models/rf_model_best.pkl')
-            xgb_model = joblib.load('models/xgb_model_best.pkl')
-            
-            # Hitung total size
-            downloader = ModelDownloader()
-            _, total_size = downloader.get_model_size_info()
-            
-            st.sidebar.success(f"✅ Models loaded! ({(total_size / (1024**2)):.1f} MB)")
-            
-            return {
-                'scaler': scaler,
-                'le_cut': le_cut,
-                'le_color': le_color,
-                'le_clarity': le_clarity,
-                'knn': knn_model,
-                'rf': rf_model,
-                'xgb': xgb_model,
-                'version': APP_CONFIG['version']
-            }
-            
-    except Exception as e:
-        st.error(f"❌ Error loading models: {str(e)}")
-        st.error("Please check if all model files exist and are not corrupted.")
-        return None
+    models = {}
+    
+    # 1. Load scaler (paling ringan)
+    with st.spinner("🔄 Loading scaler..."):
+        models['scaler'] = joblib.load('models/scaler.pkl')
+        log_memory("after scaler")
+        force_gc()
+    
+    # 2. Load label encoders
+    with st.spinner("🔄 Loading encoders..."):
+        models['le_cut'] = joblib.load('models/le_cut.pkl')
+        models['le_color'] = joblib.load('models/le_color.pkl')
+        models['le_clarity'] = joblib.load('models/le_clarity.pkl')
+        log_memory("after encoders")
+        force_gc()
+    
+    # 3. Load KNN (paling ringan di antara model)
+    with st.spinner("🔄 Loading KNN model..."):
+        models['knn'] = joblib.load('models/knn_model_best.pkl')
+        log_memory("after KNN")
+        force_gc()
+    
+    # 4. Load Random Forest (sedang)
+    with st.spinner("🔄 Loading Random Forest model..."):
+        models['rf'] = joblib.load('models/rf_model_best.pkl')
+        log_memory("after RF")
+        force_gc()
+    
+    # 5. Load XGBoost (paling berat)
+    with st.spinner("🔄 Loading XGBoost model..."):
+        models['xgb'] = joblib.load('models/xgb_model_best.pkl')
+        log_memory("after XGB")
+        force_gc()
+    
+    # Final memory
+    log_memory("final")
+    
+    return models
 
 # ============================================
 # FUNGSI UTILITY
@@ -156,7 +154,10 @@ def predict_price(features_df, model_name):
 # MAIN APP
 # ============================================
 def main():
-    # Load models (auto-download jika perlu)
+    # Log memory awal
+    log_memory("initial")
+    
+    # Load models (satu per satu)
     models = load_models()
     if models is None:
         st.stop()
@@ -164,11 +165,18 @@ def main():
     # Simpan models di session state
     st.session_state['models'] = models
     
+    # Force GC setelah load
+    force_gc()
+    
     # Sidebar untuk input
     with st.sidebar:
         st.image(APP_CONFIG["logo_url"], width=100)
         st.title(APP_CONFIG["app_title"])
-        st.caption(f"Version: {models['version']}")
+        st.caption(f"Version: {models.get('version', APP_CONFIG['version'])}")
+        
+        # Tampilkan memory usage
+        log_memory("sidebar")
+        
         st.markdown("---")
         
         # Input parameters
@@ -260,7 +268,7 @@ def main():
         model_choice = st.radio(
             "Algoritma Prediksi",
             options=["K-Nearest Neighbors (KNN)", "Random Forest", "XGBoost"],
-            index=2,  # Default XGBoost
+            index=2,
             help="Pilih algoritma machine learning untuk prediksi"
         )
         
@@ -287,7 +295,6 @@ def main():
         with col1:
             st.subheader("📋 Ringkasan Input")
             
-            # Tampilkan input dalam bentuk metrics
             metrics_cols = st.columns(3)
             with metrics_cols[0]:
                 st.metric("Carat", f"{carat:.2f}")
@@ -308,7 +315,6 @@ def main():
             st.subheader("🎯 Model Terpilih")
             st.info(f"**{model_choice}**")
             
-            # Tampilkan informasi singkat model
             model_info = MODEL_INFO[model_choice]
             st.metric("R2 Score", f"{model_info['R2 Score']:.4f}")
             st.metric("MAE", f"${model_info['MAE']:,.2f}")
@@ -318,22 +324,18 @@ def main():
         # Prediksi
         if predict_button:
             with st.spinner("Menghitung prediksi..."):
-                # Buat dataframe fitur
                 features_df = create_feature_dataframe(
                     carat, cut, color, clarity, depth, table, x, y, z
                 )
                 
                 if features_df is not None:
-                    # Prediksi dengan model yang dipilih
                     prediction = predict_price(features_df, model_choice)
                     
                     if prediction is not None:
-                        # Tampilkan hasil prediksi
                         st.subheader("💰 Hasil Prediksi Harga")
                         
                         result_cols = st.columns([1, 2, 1])
                         with result_cols[1]:
-                            # Buat gauge chart
                             fig = go.Figure(go.Indicator(
                                 mode="gauge+number+delta",
                                 value=prediction,
@@ -356,14 +358,9 @@ def main():
                                 }
                             ))
                             
-                            fig.update_layout(
-                                height=300,
-                                margin=dict(l=20, r=20, t=50, b=20),
-                            )
-                            
+                            fig.update_layout(height=300)
                             st.plotly_chart(fig, use_container_width=True)
                         
-                        # Tampilkan harga dalam format mata uang
                         st.markdown(
                             f"""
                             <div style='text-align: center; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px;'>
@@ -374,7 +371,6 @@ def main():
                             unsafe_allow_html=True
                         )
                         
-                        # Simpan history prediksi di session state
                         if 'history' not in st.session_state:
                             st.session_state.history = []
                         
@@ -388,18 +384,15 @@ def main():
                             'prediction': prediction
                         })
         
-        # Tampilkan history prediksi
         if 'history' in st.session_state and st.session_state.history:
             st.markdown("---")
             st.subheader("📜 History Prediksi")
-            
             history_df = pd.DataFrame(st.session_state.history)
             st.dataframe(history_df, use_container_width=True)
     
     with tab2:
         st.subheader("📊 Perbandingan Kinerja Model")
         
-        # Buat dataframe untuk perbandingan
         comparison_df = pd.DataFrame({
             'Model': list(MODEL_INFO.keys()),
             'R2 Score': [info['R2 Score'] for info in MODEL_INFO.values()],
@@ -407,14 +400,11 @@ def main():
             'RMSE ($)': [info['RMSE'] for info in MODEL_INFO.values()]
         })
         
-        # Tampilkan tabel perbandingan
         st.dataframe(comparison_df, use_container_width=True, hide_index=True)
         
-        # Visualisasi perbandingan
         col1, col2 = st.columns(2)
         
         with col1:
-            # Bar chart R2 Score
             fig_r2 = px.bar(
                 comparison_df, 
                 x='Model', 
@@ -427,21 +417,18 @@ def main():
             st.plotly_chart(fig_r2, use_container_width=True)
         
         with col2:
-            # Bar chart MAE
             fig_mae = px.bar(
                 comparison_df, 
                 x='Model', 
                 y='MAE ($)',
-                title='Perbandingan MAE (Mean Absolute Error)',
+                title='Perbandingan MAE',
                 color='Model',
                 color_discrete_sequence=px.colors.qualitative.Set2
             )
             fig_mae.update_layout(showlegend=False)
             st.plotly_chart(fig_mae, use_container_width=True)
         
-        # Tampilkan detail setiap model
         st.subheader("📋 Detail Model")
-        
         for model_name, info in MODEL_INFO.items():
             with st.expander(f"**{model_name}**"):
                 col1, col2, col3 = st.columns(3)
@@ -458,64 +445,34 @@ def main():
     
     with tab3:
         st.subheader("ℹ️ Informasi Aplikasi")
-        
         st.markdown("""
         ### **Tentang Aplikasi**
-        Aplikasi ini menggunakan 3 algoritma Machine Learning untuk memprediksi harga diamond berdasarkan karakteristiknya:
-        
-        - **K-Nearest Neighbors (KNN)**: Algoritma berbasis jarak yang mencari kemiripan dengan data training
-        - **Random Forest**: Ensemble method yang menggunakan banyak decision trees
-        - **XGBoost**: Algoritma gradient boosting yang sangat akurat dan efisien
+        Aplikasi ini menggunakan 3 algoritma Machine Learning untuk memprediksi harga diamond.
         
         ### **Fitur yang Digunakan**
-        1. **Carat**: Berat diamond (1 carat = 200 mg)
-        2. **Cut**: Kualitas potongan (Fair, Good, Very Good, Premium, Ideal)
-        3. **Color**: Warna diamond (D = terbaik, J = terendah)
-        4. **Clarity**: Kejernihan (I1 = terendah, IF = terbaik)
+        1. **Carat**: Berat diamond
+        2. **Cut**: Kualitas potongan
+        3. **Color**: Warna diamond
+        4. **Clarity**: Kejernihan
         5. **Depth**: Persentase kedalaman
         6. **Table**: Persentase table
-        7. **Dimensions**: Panjang (x), Lebar (y), Kedalaman (z) dalam mm
+        7. **Dimensions**: Panjang (x), Lebar (y), Kedalaman (z)
         
         ### **Performa Model**
-        - ✅ **XGBoost** adalah model terbaik dengan R2 Score 0.9822
-        - ✅ **Random Forest** memiliki MAE terendah ($267.65)
-        - ✅ Semua model memiliki akurasi di atas 96%
-        
-        ### **Cara Penggunaan**
-        1. Masukkan parameter diamond di sidebar
-        2. Pilih algoritma yang diinginkan
-        3. Klik tombol "Prediksi Harga"
-        4. Lihat hasil prediksi dan history
+        - ✅ **XGBoost** R2 Score 0.9822
+        - ✅ **Random Forest** MAE $267.65
+        - ✅ **KNN** R2 Score 0.9642
         """)
     
     with tab4:
         st.subheader("📚 Preview Dataset")
-        
-        # Load sample data
         try:
             df_sample = pd.read_csv('diamonds.csv').head(100)
             st.dataframe(df_sample, use_container_width=True)
-            
-            # Statistik deskriptif
             st.subheader("📊 Statistik Deskriptif")
             st.dataframe(df_sample.describe(), use_container_width=True)
-            
-            # Distribusi harga
-            fig_dist = px.histogram(
-                df_sample, 
-                x='price', 
-                nbins=50,
-                title='Distribusi Harga Diamond (Sample 100 data)',
-                labels={'price': 'Price (USD)'}
-            )
-            st.plotly_chart(fig_dist, use_container_width=True)
-            
-        except Exception as e:
-            st.warning("Dataset tidak ditemukan. Tampilkan hanya sample data.")
-            st.info("Dataset original dapat diunduh dari Kaggle.")
+        except:
+            st.info("Dataset sample tidak tersedia")
 
-# ============================================
-# RUN APLIKASI
-# ============================================
 if __name__ == '__main__':
     main()
