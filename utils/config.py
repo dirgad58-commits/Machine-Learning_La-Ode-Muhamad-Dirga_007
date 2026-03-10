@@ -10,7 +10,7 @@
 GOOGLE_DRIVE_CONFIG = {
     # Gunakan ZIP file (lebih cepat dan praktis)
     'zip_file': {
-        'id': '1ABC123XYZ',  # <--- GANTI DENGAN ID FILE ZIP ANDA
+        'id': '12HsXFpUdTHgC9eruaI_8jwsLjYWlpCS4',  # <--- GANTI DENGAN ID FILE ZIP ANDA
         'filename': 'models.zip',
         'extract_to': 'models'
     },
