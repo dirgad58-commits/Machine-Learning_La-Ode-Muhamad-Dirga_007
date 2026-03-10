@@ -6,258 +6,35 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
 import os
-import gdown
-import zipfile
-import tempfile
-from pathlib import Path
-import hashlib
-import time
+import sys
+
+# Tambahkan path untuk import modul utils
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from utils.model_downloader import ModelDownloader, check_and_download_models
+from utils.config import APP_CONFIG, MODEL_INFO
 
 # ============================================
 # KONFIGURASI HALAMAN
 # ============================================
 st.set_page_config(
-    page_title="Diamond Price Predictor",
-    page_icon="💎",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title=APP_CONFIG["page_title"],
+    page_icon=APP_CONFIG["page_icon"],
+    layout=APP_CONFIG["layout"],
+    initial_sidebar_state=APP_CONFIG["initial_sidebar_state"]
 )
 
 # ============================================
-# KONFIGURASI GOOGLE DRIVE
-# ============================================
-# GANTI DENGAN FILE ID ANDA!
-# Cara mendapatkannya: 
-# 1. Upload file ke Google Drive
-# 2. Share file dengan "Anyone with link"
-# 3. Ambil ID dari link: https://drive.google.com/file/d/XXXXXXXXX/view
-GOOGLE_DRIVE_CONFIG = {
-    # Jika upload file satu per satu
-    'files': {
-        'xgb_model_best.pkl': '1ABC123XYZ...',  # Ganti dengan ID file XGBoost
-        'rf_model_best.pkl': '1DEF456UVW...',    # Ganti dengan ID file Random Forest
-        'knn_model_best.pkl': '1GHI789RST...',   # Ganti dengan ID file KNN
-        'scaler.pkl': '1JKL012MNO...',           # Ganti dengan ID file Scaler
-        'le_cut.pkl': '1PQR345STU...',           # Ganti dengan ID file LabelEncoder Cut
-        'le_color.pkl': '1VWX678YZA...',         # Ganti dengan ID file LabelEncoder Color
-        'le_clarity.pkl': '1BCD901EFG...'        # Ganti dengan ID file LabelEncoder Clarity
-    },
-    
-    # Atau jika upload dalam 1 file zip
-    'zip_file': {
-        'id': '1ZIPFILEID123456789',  # Ganti dengan ID file ZIP
-        'filename': 'models.zip',
-        'extract_to': 'models'
-    },
-    
-    # Metadata untuk verifikasi
-    'version': '1.0.0',
-    'last_updated': '2024-01-15'
-}
-
-# ============================================
-# FUNGSI AUTO-DOWNLOAD MODELS
-# ============================================
-class ModelDownloader:
-    """Class untuk mengelola download model dari Google Drive"""
-    
-    def __init__(self):
-        self.models_dir = Path('models')
-        self.models_dir.mkdir(exist_ok=True)
-        
-    def calculate_md5(self, filepath):
-        """Hitung MD5 hash file untuk verifikasi"""
-        hash_md5 = hashlib.md5()
-        with open(filepath, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                hash_md5.update(chunk)
-        return hash_md5.hexdigest()
-    
-    def verify_file(self, filepath, expected_size=None):
-        """Verifikasi file download"""
-        if not os.path.exists(filepath):
-            return False
-        
-        # Cek ukuran file
-        if expected_size:
-            actual_size = os.path.getsize(filepath)
-            if abs(actual_size - expected_size) > 1024:  # Toleransi 1KB
-                return False
-        
-        return True
-    
-    def download_file(self, file_id, output_path, expected_size=None):
-        """Download file dari Google Drive dengan progress bar"""
-        
-        # Buat URL download
-        url = f'https://drive.google.com/uc?id={file_id}'
-        
-        # Download dengan progress bar
-        try:
-            with st.spinner(f"Downloading {os.path.basename(output_path)}..."):
-                # Gunakan gdown dengan output ke temporary file
-                temp_file = tempfile.NamedTemporaryFile(delete=False)
-                gdown.download(url, temp_file.name, quiet=True)
-                
-                # Verifikasi file
-                if self.verify_file(temp_file.name, expected_size):
-                    # Pindahkan ke lokasi tujuan
-                    os.replace(temp_file.name, output_path)
-                    st.success(f"✅ {os.path.basename(output_path)} downloaded successfully!")
-                    return True
-                else:
-                    st.error(f"❌ Download failed: {os.path.basename(output_path)} corrupted")
-                    os.unlink(temp_file.name)
-                    return False
-                    
-        except Exception as e:
-            st.error(f"❌ Error downloading {os.path.basename(output_path)}: {str(e)}")
-            return False
-    
-    def download_all_files(self):
-        """Download semua file model satu per satu"""
-        
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        total_files = len(GOOGLE_DRIVE_CONFIG['files'])
-        downloaded_files = []
-        
-        for idx, (filename, file_id) in enumerate(GOOGLE_DRIVE_CONFIG['files'].items()):
-            status_text.text(f"Downloading {filename}... ({idx + 1}/{total_files})")
-            
-            output_path = self.models_dir / filename
-            
-            if not output_path.exists():
-                if self.download_file(file_id, str(output_path)):
-                    downloaded_files.append(filename)
-            else:
-                st.info(f"⏭️ {filename} already exists, skipping...")
-                downloaded_files.append(filename)
-            
-            # Update progress
-            progress_bar.progress((idx + 1) / total_files)
-            time.sleep(0.5)  # Sedikit delay untuk UX
-        
-        status_text.text("Download complete!")
-        progress_bar.empty()
-        
-        return len(downloaded_files) == total_files
-    
-    def download_zip_and_extract(self):
-        """Download file zip dan extract"""
-        
-        zip_config = GOOGLE_DRIVE_CONFIG['zip_file']
-        zip_path = self.models_dir / zip_config['filename']
-        
-        # Download zip file
-        if not zip_path.exists():
-            st.info("📦 Downloading model archive...")
-            if not self.download_file(zip_config['id'], str(zip_path)):
-                return False
-        
-        # Extract zip
-        try:
-            with st.spinner("📂 Extracting model files..."):
-                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                    zip_ref.extractall(zip_config['extract_to'])
-                st.success("✅ Models extracted successfully!")
-                
-                # Hapus file zip setelah extract
-                zip_path.unlink()
-                return True
-                
-        except Exception as e:
-            st.error(f"❌ Error extracting models: {str(e)}")
-            return False
-    
-    def check_missing_files(self):
-        """Cek file model mana yang belum ada"""
-        required_files = list(GOOGLE_DRIVE_CONFIG['files'].keys())
-        existing_files = []
-        missing_files = []
-        
-        for filename in required_files:
-            if (self.models_dir / filename).exists():
-                existing_files.append(filename)
-            else:
-                missing_files.append(filename)
-        
-        return existing_files, missing_files
-    
-    def get_model_size_info(self):
-        """Dapatkan informasi ukuran model"""
-        total_size = 0
-        file_sizes = {}
-        
-        for filename in GOOGLE_DRIVE_CONFIG['files'].keys():
-            filepath = self.models_dir / filename
-            if filepath.exists():
-                size = filepath.stat().st_size
-                file_sizes[filename] = size
-                total_size += size
-        
-        return file_sizes, total_size
-
-# ============================================
-# LOAD MODELS DAN ENCODERS (DENGAN AUTO-DOWNLOAD)
+# FUNGSI LOAD MODELS (DENGAN AUTO-DOWNLOAD)
 # ============================================
 @st.cache_resource(ttl=3600)  # Cache selama 1 jam
 def load_models():
     """Load semua model dan encoders dengan auto-download jika perlu"""
     
-    # Inisialisasi downloader
-    downloader = ModelDownloader()
-    
-    # Cek file yang ada dan yang missing
-    existing_files, missing_files = downloader.check_missing_files()
-    
-    # Tampilkan status di sidebar
-    with st.sidebar:
-        st.sidebar.markdown("---")
-        with st.expander("📦 Model Status", expanded=False):
-            if existing_files:
-                st.success(f"✅ {len(existing_files)} models ready")
-                for f in existing_files:
-                    st.caption(f"  • {f}")
-            
-            if missing_files:
-                st.warning(f"⚠️ {len(missing_files)} models missing")
-                for f in missing_files[:3]:  # Tampilkan max 3
-                    st.caption(f"  • {f}")
-                if len(missing_files) > 3:
-                    st.caption(f"  ... and {len(missing_files) - 3} more")
-    
-    # Jika ada file yang missing, download
-    if missing_files:
-        with st.spinner("📥 Preparing to download model files..."):
-            st.warning(f"⚠️ {len(missing_files)} model files need to be downloaded first.")
-            
-            # Tampilkan estimasi ukuran
-            st.info("📊 Estimated download size: ~200MB (may take a few minutes)")
-            
-            # Pilihan metode download
-            download_method = st.radio(
-                "Choose download method:",
-                ["Download all files (Recommended)", "Download as ZIP (Faster)"],
-                key="download_method"
-            )
-            
-            if st.button("⬇️ Start Download", type="primary", use_container_width=True):
-                if "ZIP" in download_method:
-                    success = downloader.download_zip_and_extract()
-                else:
-                    success = downloader.download_all_files()
-                
-                if success:
-                    st.success("✅ All models downloaded successfully!")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.error("❌ Download failed. Please try again.")
-                    st.stop()
-            else:
-                st.stop()
+    # Cek dan download models jika diperlukan
+    if not check_and_download_models():
+        st.error("❌ Gagal mendownload model. Silakan coba lagi nanti.")
+        st.stop()
     
     # Load models jika semua file sudah ada
     try:
@@ -277,6 +54,7 @@ def load_models():
             xgb_model = joblib.load('models/xgb_model_best.pkl')
             
             # Hitung total size
+            downloader = ModelDownloader()
             _, total_size = downloader.get_model_size_info()
             
             st.sidebar.success(f"✅ Models loaded! ({(total_size / (1024**2)):.1f} MB)")
@@ -289,7 +67,7 @@ def load_models():
                 'knn': knn_model,
                 'rf': rf_model,
                 'xgb': xgb_model,
-                'version': GOOGLE_DRIVE_CONFIG['version']
+                'version': APP_CONFIG['version']
             }
             
     except Exception as e:
@@ -348,35 +126,6 @@ def predict_price(features_df, model_name):
     
     return prediction[0] if prediction is not None else None
 
-def get_model_info():
-    """Mendapatkan informasi performa model"""
-    return {
-        "K-Nearest Neighbors (KNN)": {
-            "R2 Score": 0.9642,
-            "MAE": 378.50,
-            "RMSE": 756.14,
-            "Kecepatan": "Sedang",
-            "Kelebihan": "Mudah dipahami, non-parametrik",
-            "Kekurangan": "Lambat untuk dataset besar"
-        },
-        "Random Forest": {
-            "R2 Score": 0.9816,
-            "MAE": 267.65,
-            "RMSE": 540.97,
-            "Kecepatan": "Cepat",
-            "Kelebihan": "Handal, mengatasi overfitting",
-            "Kekurangan": "Kurang interpretable"
-        },
-        "XGBoost": {
-            "R2 Score": 0.9822,
-            "MAE": 277.40,
-            "RMSE": 532.10,
-            "Kecepatan": "Sangat Cepat",
-            "Kelebihan": "Akurasi tinggi, efisien",
-            "Kekurangan": "Banyak hyperparameter"
-        }
-    }
-
 # ============================================
 # MAIN APP
 # ============================================
@@ -391,8 +140,8 @@ def main():
     
     # Sidebar untuk input
     with st.sidebar:
-        st.image("https://cdn-icons-png.flaticon.com/512/1995/1995570.png", width=100)
-        st.title("💎 Diamond Price Predictor")
+        st.image(APP_CONFIG["logo_url"], width=100)
+        st.title(APP_CONFIG["app_title"])
         st.caption(f"Version: {models['version']}")
         st.markdown("---")
         
@@ -500,8 +249,8 @@ def main():
     # ============================================
     # MAIN CONTENT
     # ============================================
-    st.title("💎 Diamond Price Prediction")
-    st.markdown("### Prediksi harga diamond menggunakan 3 algoritma Machine Learning")
+    st.title(APP_CONFIG["app_title"])
+    st.markdown(APP_CONFIG["app_description"])
     
     # Tabs untuk berbagai fitur
     tab1, tab2, tab3, tab4 = st.tabs(["📈 Prediksi", "📊 Perbandingan Model", "ℹ️ Informasi", "📚 Dataset"])
@@ -534,7 +283,7 @@ def main():
             st.info(f"**{model_choice}**")
             
             # Tampilkan informasi singkat model
-            model_info = get_model_info()[model_choice]
+            model_info = MODEL_INFO[model_choice]
             st.metric("R2 Score", f"{model_info['R2 Score']:.4f}")
             st.metric("MAE", f"${model_info['MAE']:,.2f}")
         
@@ -560,12 +309,12 @@ def main():
                         with result_cols[1]:
                             # Buat gauge chart
                             fig = go.Figure(go.Indicator(
-                                mode = "gauge+number+delta",
-                                value = prediction,
-                                domain = {'x': [0, 1], 'y': [0, 1]},
-                                title = {'text': "Predicted Price (USD)"},
-                                delta = {'reference': 4000},
-                                gauge = {
+                                mode="gauge+number+delta",
+                                value=prediction,
+                                domain={'x': [0, 1], 'y': [0, 1]},
+                                title={'text': "Predicted Price (USD)"},
+                                delta={'reference': 4000},
+                                gauge={
                                     'axis': {'range': [None, 20000]},
                                     'bar': {'color': "#1f77b4"},
                                     'steps': [
@@ -624,15 +373,12 @@ def main():
     with tab2:
         st.subheader("📊 Perbandingan Kinerja Model")
         
-        # Data perbandingan model
-        model_info = get_model_info()
-        
         # Buat dataframe untuk perbandingan
         comparison_df = pd.DataFrame({
-            'Model': list(model_info.keys()),
-            'R2 Score': [info['R2 Score'] for info in model_info.values()],
-            'MAE ($)': [info['MAE'] for info in model_info.values()],
-            'RMSE ($)': [info['RMSE'] for info in model_info.values()]
+            'Model': list(MODEL_INFO.keys()),
+            'R2 Score': [info['R2 Score'] for info in MODEL_INFO.values()],
+            'MAE ($)': [info['MAE'] for info in MODEL_INFO.values()],
+            'RMSE ($)': [info['RMSE'] for info in MODEL_INFO.values()]
         })
         
         # Tampilkan tabel perbandingan
@@ -670,7 +416,7 @@ def main():
         # Tampilkan detail setiap model
         st.subheader("📋 Detail Model")
         
-        for model_name, info in model_info.items():
+        for model_name, info in MODEL_INFO.items():
             with st.expander(f"**{model_name}**"):
                 col1, col2, col3 = st.columns(3)
                 with col1:
