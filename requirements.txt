@@ -1,21 +1,21 @@
 # Core dependencies
-streamlit==1.35.0
-pandas==2.2.3
-numpy==1.26.4
-scikit-learn==1.5.2
-xgboost==2.0.3
+streamlit==1.28.0
+pandas==2.0.3
+numpy==1.24.3
+scikit-learn==1.3.0
+xgboost==1.7.6
 
 # Utilities
-joblib==1.4.2
-gdown==5.2.0
-tenacity==8.5.0
-
-# Visualization - PASTIKAN PILLOW TERINSTALL
-plotly==5.24.0
-pillow==10.4.0
+joblib==1.3.2
+gdown==4.7.1
+tenacity==8.2.3
+psutil==5.9.8         
+# Visualization
+plotly==5.15.0
+pillow==9.5.0
 
 # Additional
-setuptools==75.1.0
-wheel==0.44.0
+setuptools==69.5.1
+wheel==0.43.0
 packaging==24.1
 typing-extensions==4.12.2
