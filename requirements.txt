@@ -5,13 +5,14 @@ numpy==1.26.4
 scikit-learn==1.5.2
 xgboost==2.0.3
 
-# Utilities - PASTIKAN INI
+# Utilities
 joblib==1.4.2
 gdown==5.2.0
 tenacity==8.5.0
 
-# Visualization
+# Visualization - PASTIKAN PILLOW TERINSTALL
 plotly==5.24.0
+pillow==10.4.0
 
 # Additional
 setuptools==75.1.0
