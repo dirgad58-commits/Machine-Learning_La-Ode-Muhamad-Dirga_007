@@ -1,3 +1,24 @@
+# ============================================
+# FIX: Untuk Python 3.14 compatibility
+# ============================================
+import sys
+import warnings
+warnings.filterwarnings('ignore')
+
+# Fix untuk distutils issue
+try:
+    import setuptools
+except ImportError:
+    import subprocess
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "setuptools"])
+
+# Fix untuk numpy/pandas compatibility
+import os
+os.environ['PYTHONWARNINGS'] = 'ignore'
+
+# ============================================
+# KONFIGURASI HALAMAN
+# ============================================
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -5,8 +26,11 @@ import joblib
 import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime
-import os
 import sys
+import warnings
+warnings.filterwarnings('ignore')
+
+# ... (rest of your code) ...
 
 # Tambahkan path untuk import modul utils
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
