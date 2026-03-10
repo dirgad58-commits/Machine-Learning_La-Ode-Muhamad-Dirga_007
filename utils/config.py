@@ -10,13 +10,13 @@
 GOOGLE_DRIVE_CONFIG = {
     # Jika upload file satu per satu
     'files': {
-        'xgb_model_best.pkl': '1ABC123XYZ...',  # Ganti dengan ID file XGBoost
-        'rf_model_best.pkl': '1DEF456UVW...',    # Ganti dengan ID file Random Forest
-        'knn_model_best.pkl': '1GHI789RST...',   # Ganti dengan ID file KNN
-        'scaler.pkl': '1JKL012MNO...',           # Ganti dengan ID file Scaler
-        'le_cut.pkl': '1PQR345STU...',           # Ganti dengan ID file LabelEncoder Cut
-        'le_color.pkl': '1VWX678YZA...',         # Ganti dengan ID file LabelEncoder Color
-        'le_clarity.pkl': '1BCD901EFG...'        # Ganti dengan ID file LabelEncoder Clarity
+        'xgb_model_best.pkl': '1Di-9Ztl29PEiTieEN-rMsbHz_thxOO8D',  # Ganti dengan ID file XGBoost
+        'rf_model_best.pkl': '1nJAHUhAjOi_7n5V1Wwp8T0Jchd2q85UP',    # Ganti dengan ID file Random Forest
+        'knn_model_best.pkl': '1cg-3XlNXqL9pFNtRXR39fzZQpTJUs7Ks',   # Ganti dengan ID file KNN
+        'scaler.pkl': '11gkpUXg42MF8WCB1iNFN_rD1kEu34hmjO',           # Ganti dengan ID file Scaler
+        'le_cut.pkl': '1Ry1Rs4Ajbduo5RD_7YGCeGwvemBlspJ_',           # Ganti dengan ID file LabelEncoder Cut
+        'le_color.pkl': '1cLjXClULTcQc1wTe2jZ64RJLreUQMuzC',         # Ganti dengan ID file LabelEncoder Color
+        'le_clarity.pkl': '1V78kj-AA8eV_IWv1h1zGo5m5s42iw0MY'        # Ganti dengan ID file LabelEncoder Clarity
     },
     
     # Atau jika upload dalam 1 file zip
